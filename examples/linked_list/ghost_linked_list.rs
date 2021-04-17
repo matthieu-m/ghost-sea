@@ -10,7 +10,7 @@
 //
 //  There's a single line of `unsafe` code: the implementation of `GhostProject`.
 
-use crate::ghost_sea::{GhostCell, GhostToken};
+use crate::ghost_cell::{GhostCell, GhostToken};
 use crate::static_rc::StaticRc;
 
 /// A safe implementation of a linked-list build upon `GhostCell` and `StaticRc`.

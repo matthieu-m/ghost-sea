@@ -3,7 +3,7 @@
 
 use core::mem::{self, MaybeUninit};
 
-use super::GhostToken;
+use ghost_cell::GhostToken;
 
 /// Projects a non-branded type as a branded type.
 ///
@@ -87,11 +87,32 @@ unsafe impl<'a, 'id> GhostProject<'id> for GhostToken<'static> {
     type Branded = GhostToken<'id>;
 }
 
-/// Trait family to describe the genericity over brands of the return types of the closures passed to the various
-/// GhostSea callbacks.
-pub trait GhostResult<'a> {
+/// Trait for use with `GhostSea::apply_ref`.
+///
+/// Work-around for difficulties in describing the relationship between input-lifetime and output-lifetime of callbacks.
+pub trait GhostApplyRef<'id, T>
+where
+    T: for<'x> GhostProject<'x>,
+{
     /// Lifetime-parameterized output of the callback.
     type Output;
+
+    /// Fowarder.
+    fn call(self, ghost: &'id <T as GhostProject<'id>>::Branded, token: &'id GhostToken<'id>) -> Self::Output;
+}
+
+/// Trait for use with `GhostSea::apply_mut`.
+///
+/// Work-around for difficulties in describing the relationship between input-lifetime and output-lifetime of callbacks.
+pub trait GhostApplyMut<'id, T>
+where
+    T: for<'x> GhostProject<'x>,
+{
+    /// Lifetime-parameterized output of the callback.
+    type Output;
+
+    /// Fowarder.
+    fn call(self, ghost: &'id mut <T as GhostProject<'id>>::Branded, token: &'id mut GhostToken<'id>) -> Self::Output;
 }
 
 /// Ergonomic wrapper around the usage of `GhostCell` and `GhostToken`.
@@ -149,99 +170,32 @@ impl<T> GhostSea<T> {
 
 impl<T> GhostSea<T>
 where
-    for<'id> T: GhostProject<'id>,
+    T: for<'id> GhostProject<'id>,
 {
     /// Apply the provided function, and return its result.
     #[inline(always)]
-    pub fn apply_ref<'a, R, F>(&'a self, fun: F) -> <R as GhostResult<'a>>::Output
+    pub fn apply_ref<'a, G>(&'a self, fun: G) -> <G as GhostApplyRef<'a, T>>::Output
     where
-        R: for<'id> GhostResult<'id>,
-        F: for<'id> FnOnce(&'id <T as GhostProject<'id>>::Branded, &'id GhostToken<'id>) -> <R as GhostResult<'id>>::Output,
+        G: for<'id> GhostApplyRef<'id, T>,
     {
         //  Safety:
         //  -   Pair &T with &GhostToken, so read-only.
         let token: &'a GhostToken<'a> = unsafe { self.token.project() };
         let value: &'a <T as GhostProject<'a>>::Branded = unsafe { self.value.project() };
 
-        fun(value, token)
+        fun.call(value, token)
     }
 
     /// Apply the provided function, and return its result.
     #[inline(always)]
-    pub fn apply_ref_opt_ref<'a, R, F>(&'a self, fun: F) -> Option<&'a R>
+    pub fn apply_mut<'a, G>(&'a mut self, fun: G) -> <G as GhostApplyMut<'a, T>>::Output
     where
-        for<'id> F: FnOnce(&'id <T as GhostProject<'id>>::Branded, &'id GhostToken<'id>) -> Option<&'id R>,
-    {
-        //  FIXME: Remove this oddly specific method, and replace uses by `apply_ref`.
-        //
-        //  Unfortunately, this will require understanding why `LinkedList::front` fails with:
-        //
-        //  error: implementation of `FnOnce` is not general enough
-        //  --> examples/linked_list/linked_list.rs:33:48
-        //      |
-        //  33  |       pub fn front(&self) -> Option<&T> { self.0.apply_ref(|ghost, token| ghost.front(token)) }
-        //      |                                                  ^^^^^^^^^ implementation of `FnOnce` is not general enough
-        //      |
-        //      = note: `FnOnce<(&'0 <GhostImpl<'static, T> as GhostProject<'0>>::Branded, &'0 GhostToken<'0>)>`
-        //              would have to be implemented for the type
-        //              `for<'a> fn(&'a <GhostImpl<'static, T> as GhostProject<'a>>::Branded, &'a GhostToken<'a>) -> Option<&'a T>
-        //              {linked_list::LinkedList::<T>::front_impl}`, for some specific lifetime `'0`...
-        //
-        //      = note: ...but `FnOnce<(&'id <GhostImpl<'static, T> as GhostProject<'id>>::Branded, &'id GhostToken<'id>)>`
-        //              is actually implemented for the type
-        //              `for<'a> fn(&'a <GhostImpl<'static, T> as GhostProject<'a>>::Branded, &'a GhostToken<'a>) -> Option<&'a T>
-        //              {linked_list::LinkedList::<T>::front_impl}`
-
-        //  Safety:
-        //  -   Pair &T with &GhostToken, so read-only.
-        let token: &'a GhostToken<'a> = unsafe { self.token.project() };
-        let value: &'a <T as GhostProject<'a>>::Branded = unsafe { self.value.project() };
-
-        fun(value, token)
-    }
-
-    /// Apply the provided function, and return its result.
-    #[inline(always)]
-    pub fn apply_mut<'a, R, F>(&'a mut self, fun: F) -> R
-    where
-        for<'id> F: FnOnce(&'id mut <T as GhostProject<'id>>::Branded, &'id mut GhostToken<'id>) -> R,
+        G: for<'id> GhostApplyMut<'id, T>,
     {
         let token: &'a mut GhostToken<'a> = self.token.project_mut();
         let value: &'a mut <T as GhostProject<'a>>::Branded = self.value.project_mut();
 
-        fun(value, token)
-    }
-
-    /// Apply the provided function, and return its result.
-    #[inline(always)]
-    pub fn apply_mut_opt_mut<'a, R, F>(&'a mut self, fun: F) -> Option<&'a mut R>
-    where
-        for<'id> F: FnOnce(&'id mut <T as GhostProject<'id>>::Branded, &'id mut GhostToken<'id>) -> Option<&'id mut R>,
-    {
-        //  FIXME: Remove this oddly specific method, and replace uses by `apply_ref`.
-        //
-        //  Unfortunately, this will require understanding why `LinkedList::front` fails with:
-        //
-        //  error: implementation of `FnOnce` is not general enough
-        //  --> examples/linked_list/linked_list.rs:33:48
-        //      |
-        //  33  |       pub fn front(&self) -> Option<&T> { self.0.apply_ref(|ghost, token| ghost.front(token)) }
-        //      |                                                  ^^^^^^^^^ implementation of `FnOnce` is not general enough
-        //      |
-        //      = note: `FnOnce<(&'0 <GhostImpl<'static, T> as GhostProject<'0>>::Branded, &'0 GhostToken<'0>)>`
-        //              would have to be implemented for the type
-        //              `for<'a> fn(&'a <GhostImpl<'static, T> as GhostProject<'a>>::Branded, &'a GhostToken<'a>) -> Option<&'a T>
-        //              {linked_list::LinkedList::<T>::front_impl}`, for some specific lifetime `'0`...
-        //
-        //      = note: ...but `FnOnce<(&'id <GhostImpl<'static, T> as GhostProject<'id>>::Branded, &'id GhostToken<'id>)>`
-        //              is actually implemented for the type
-        //              `for<'a> fn(&'a <GhostImpl<'static, T> as GhostProject<'a>>::Branded, &'a GhostToken<'a>) -> Option<&'a T>
-        //              {linked_list::LinkedList::<T>::front_impl}`
-
-        let token = self.token.project_mut();
-        let value = self.value.project_mut();
-
-        fun(value, token)
+        fun.call(value, token)
     }
 
     /// Apply the provided function, and return its result.

@@ -1,3 +1,4 @@
+extern crate ghost_cell;
 extern crate ghost_sea;
 extern crate static_rc;
 
@@ -11,7 +12,7 @@ fn main() {
     let mut list: LinkedList<String> = LinkedList::default();
 
     assert!(list.is_empty());
-    //assert_eq!(0, list.len());
+    assert_eq!(0, list.len());
 
     assert_eq!(None, list.front_mut());
     assert_eq!(None, list.back_mut());
@@ -22,11 +23,11 @@ fn main() {
     list.push_back("Hello, You!".to_string());
 
     assert!(!list.is_empty());
-    //assert_eq!(2, list.len());
+    assert_eq!(2, list.len());
     assert_eq!(Some("Hello, World!"), list.front().map(|s| &**s));
     assert_eq!(Some("Hello, You!"), list.back().map(|s| &**s));
 
     //println!("{:?}", list);
 
-
+    list.clear();
 }

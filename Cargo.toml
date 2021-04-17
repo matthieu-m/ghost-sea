@@ -4,10 +4,13 @@ version = "0.1.0"
 authors = ["Matthieu M. <matthieum.147192@gmail.com>"]
 edition = "2018"
 description = "Compile-time zero-cost borrow-checking of aliased references"
-repository = "https://github.com/matthieu-m/static-rc"
+repository = "https://github.com/matthieu-m/ghost-sea"
 license = "MIT OR Apache-2.0"
 keywords = ["experimental", "aliasing", "borrowing"]
 categories = ["memory-management", "no-std"]
 
+[dependencies]
+ghost-cell = "0.1"
+
 [dev-dependencies]
-static-rc = "0.1"
+static-rc = "0.2"

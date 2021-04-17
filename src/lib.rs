@@ -22,8 +22,6 @@
 //  Lints.
 #![deny(missing_docs)]
 
-mod ghost_cell;
 mod ghost_sea;
 
-pub use self::ghost_cell::{GhostCell, GhostToken};
-pub use self::ghost_sea::{GhostProject, GhostResult, GhostSea};
+pub use self::ghost_sea::*;
